@@ -1,0 +1,68 @@
+name: build-binaries
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: ${{ matrix.job_name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact: portable_pomodoro-windows-msvc
+            job_name: Windows (MSVC)
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact: portable_pomodoro-linux
+            job_name: Linux (GNU)
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            artifact: portable_pomodoro-macos
+            job_name: macOS (Intel)
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build (release)
+        run: |
+          cargo build --release --target ${{ matrix.target }}
+
+      - name: Prepare artifact folder
+        run: |
+          mkdir artifact
+          cp target/${{ matrix.target }}/release/portable_pomodoro* artifact/
+          echo '{ "focus_minutes": 25, "short_break_minutes": 5, "long_break_minutes": 15, "sessions_until_long_break": 4, "auto_start_next": false }' > artifact/pomodoro_config.json
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: artifact
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/**/portable_pomodoro*
+            artifacts/**/pomodoro_config.json
