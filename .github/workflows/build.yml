@@ -32,7 +32,7 @@ jobs:
         run: |
           mkdir -p dist
           cp target/release/chronodoro dist/chronodoro
-          chmod +x dist/portable_pomodoro
+          chmod +x dist/chronodoro
           # Pre-seed config if not present
           [ -f pomodoro_config.json ] && cp pomodoro_config.json dist/ || cat > dist/pomodoro_config.json <<'JSON'
           {
