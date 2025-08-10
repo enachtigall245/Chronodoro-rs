@@ -2,63 +2,39 @@ name: build-linux
 on:
   push:
     branches: [ main ]
-    tags: [ 'v*' ]
   pull_request:
+    branches: [ main ]
   workflow_dispatch:
 
 jobs:
   linux:
-    name: Linux (x86_64)
-    runs-on: ubuntu-latest  # older glibc for better portability
+    runs-on: ubuntu-latest
     env:
-      RUSTFLAGS: -C target-cpu=x86-64-v2   # wider CPU baseline
-      CARGO_TERM_COLOR: always
-      BIN_NAME: chronodoro
-      TARGET: x86_64-unknown-linux-gnu
-      ZIP_NAME: chronodoro-linux-x86_64.zip
-      FEATURES: ""        # set to "notify tray" if you want features
+      RUSTFLAGS: -C target-cpu=x86-64-v2
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Install system deps (ALSA & others)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libasound2-dev pkg-config
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Install Rust (stable)
         uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ env.TARGET }}
 
-      - name: Cache cargo
-        uses: Swatinem/rust-cache@v2
-
-      - name: Install system deps (ALSA/X11/Wayland)
+      - name: Install system deps (ALSA/X11)
         run: |
           sudo apt-get update
-          sudo apt-get install -y pkg-config zip \
-            libasound2-dev libpulse-dev \
-            libx11-dev libxi-dev libxrandr-dev libxcursor-dev libxkbcommon-dev \
-            libwayland-dev libxxf86vm-dev
+          sudo apt-get install -y pkg-config \
+            libx11-dev libasound2-dev \
+            libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev
 
       - name: Build (release)
-        run: |
-          cargo build --release --target $TARGET --features "$FEATURES"
+        run: cargo build --release
 
-      - name: Strip binary (smaller)
-        run: |
-          strip target/$TARGET/release/$BIN_NAME || true
-
-      - name: Prepare portable payload
+      - name: Prepare artifact
         run: |
           mkdir -p dist
-          cp target/$TARGET/release/$BIN_NAME dist/$BIN_NAME
-          chmod +x dist/$BIN_NAME
-          cat > dist/README.txt << 'EOF'
-          Chronodoro (Linux)
-          Run the binary directly. No installer required.
-          EOF
-          cat > dist/pomodoro_config.json << 'JSON'
+          cp target/release/chronodoro dist/chronodoro
+          chmod +x dist/portable_pomodoro
+          # Pre-seed config if not present
+          [ -f pomodoro_config.json ] && cp pomodoro_config.json dist/ || cat > dist/pomodoro_config.json <<'JSON'
           {
             "focus_minutes": 25,
             "short_break_minutes": 5,
@@ -67,35 +43,12 @@ jobs:
             "auto_start_next": false
           }
           JSON
+          echo "Chronodoro (Linux) — run the binary directly." > dist/README.txt
 
-      - name: Create ZIP
-        run: |
-          cd dist && zip -r "$GITHUB_RUNNER_TEMP/$ZIP_NAME" . && cd -
-
-      - name: Upload artifact
+      - name: Upload artifact (folder; upload-artifact will zip it)
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.ZIP_NAME }}
-          path: ${{ runner.temp }}/${{ env.ZIP_NAME }}
+          name: chronodoro-linux
+          path: dist
 
-  release:
-    name: Release on tag
-    needs: linux
-    if: startsWith(github.ref, 'refs/tags/')
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-      - name: Generate SHA256SUMS.txt
-        run: |
-          cd artifacts
-          find . -type f -name '*.zip' -print0 | sort -z | xargs -0 -I{} sh -c 'sha256sum "{}" >> SHA256SUMS.txt'
-          cat SHA256SUMS.txt
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            artifacts/**/*.zip
-            artifacts/SHA256SUMS.txt
 
