@@ -9,7 +9,7 @@ on:
 jobs:
   linux:
     name: Linux (x86_64)
-    runs-on: ubuntu-20.04  # older glibc for better portability
+    runs-on: ubuntu-latest  # older glibc for better portability
     env:
       RUSTFLAGS: -C target-cpu=x86-64-v2   # wider CPU baseline
       CARGO_TERM_COLOR: always
